@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/x-algorithm-optimizer.html" }
+  ]
+}
