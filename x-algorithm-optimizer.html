@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔥火了么 --- X 算法模拟器</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts for better simulation -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #f7f9f9; 
+            color: #0f1419;
+        }
+        /* X-like styles */
+        .x-font { font-family: 'Inter', sans-serif; }
+        .x-blue { color: #1d9bf0; }
+        .x-bg-blue { background-color: #1d9bf0; }
+        .x-border { border-color: #eff3f4; }
+        
+        /* Mobile Preview Frame */
+        .mobile-frame {
+            width: 375px;
+            height: 700px;
+            border-radius: 40px;
+            border: 12px solid #222;
+            overflow: hidden;
+            position: relative;
+            background: white;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px;
+            height: 30px;
+            background: #222;
+            border-bottom-left-radius: 16px;
+            border-bottom-right-radius: 16px;
+            z-index: 20;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cfd9de; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b9c6cc; }
+
+        .editor-textarea {
+            outline: none;
+            resize: none;
+            min-height: 200px;
+        }
+
+        .highlight-risk { background-color: #fee2e2; color: #991b1b; padding: 0 2px; border-radius: 2px; }
+        .highlight-good { background-color: #dcfce7; color: #166534; padding: 0 2px; border-radius: 2px; }
+        
+        /* Animation */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+    
+    <div id="app" class="flex-1 flex flex-col md:flex-row h-full">
+        
+        <!-- Left: Editor & Tools -->
+        <div class="flex-1 flex flex-col h-full bg-white border-r border-slate-200 overflow-y-auto">
+            
+            <!-- Header -->
+            <header class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white/80 backdrop-blur sticky top-0 z-10">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white text-xl">
+                        <i class="fa-brands fa-x-twitter"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-tight">🔥火了么 --- X 算法模拟器</h1>
+                        <p class="text-xs text-slate-500">
+                            开发者: <a href="https://x.com/AntCaveClub" target="_blank" class="text-blue-500 hover:underline">@AntCaveClub</a> | 模拟你的推文是否会“火”
+                        </p>
+                    </div>
+                </div>
+                <div class="flex space-x-2">
+                    <button @click="showManual = true" class="px-4 py-2 rounded-full font-bold text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                        <i class="fa-solid fa-book-open mr-1"></i> 流量手册
+                    </button>
+                    <button @click="showReport = true" class="px-4 py-2 rounded-full font-bold text-sm bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors">
+                        <i class="fa-solid fa-chart-pie mr-1"></i> 算法分析
+                    </button>
+                     <button @click="copyContent" class="px-4 py-2 rounded-full font-bold text-sm transition-colors" 
+                        :class="copied ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-slate-800'">
+                        <i class="fa-solid" :class="copied ? 'fa-check' : 'fa-copy'"></i> {{ copied ? '已复制' : '复制全文' }}
+                    </button>
+                </div>
+            </header>
+
+            <!-- Simulation Controls (New) -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
+                    <h3 class="font-bold text-slate-800 text-sm mb-3 flex items-center">
+                        <i class="fa-solid fa-sliders mr-2"></i> 账号参数设置
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-500 font-medium block mb-1">粉丝数</label>
+                            <input v-model.number="userStats.followers" type="number" class="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400" placeholder="1000">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500 font-medium block mb-1">账号权重</label>
+                            <select v-model="userStats.isVerified" class="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400 bg-white">
+                                <option :value="false">普通账号</option>
+                                <option :value="true">Blue认证 (2x Boost)</option>
+                                <option :value="'gold'">金标认证 (5x Boost)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Editor Area -->
+                <div class="p-6 space-y-4 flex-1">
+                
+                <!-- Toolbar -->
+                <div class="flex flex-wrap gap-2 mb-2 items-center">
+                    <div class="relative group z-20">
+                         <button class="px-3 py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full text-xs font-bold hover:shadow-lg transition-all transform hover:-translate-y-0.5">
+                            <i class="fa-solid fa-fire mr-1"></i> 病毒模板
+                        </button>
+                        <!-- Dropdown -->
+                        <div class="absolute top-full left-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-2 hidden group-hover:block">
+                            <button @click="applyTemplate('contrarian')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 rounded-lg text-slate-700 font-medium">
+                                <i class="fa-solid fa-bolt text-yellow-500 mr-2"></i>反直觉/争议
+                            </button>
+                            <button @click="applyTemplate('story')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 rounded-lg text-slate-700 font-medium">
+                                <i class="fa-solid fa-book-open text-blue-500 mr-2"></i>个人故事 (Thread)
+                            </button>
+                            <button @click="applyTemplate('listicle')" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 rounded-lg text-slate-700 font-medium">
+                                <i class="fa-solid fa-list-check text-green-500 mr-2"></i>干货清单
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="h-4 w-px bg-slate-300 mx-1"></div>
+
+                    <button @click="insertHook" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full text-xs font-semibold hover:bg-blue-100 transition-colors">
+                        <i class="fa-solid fa-magnet mr-1"></i> 黄金开头
+                    </button>
+                    <button @click="insertCTA" class="px-3 py-1.5 bg-green-50 text-green-600 rounded-full text-xs font-semibold hover:bg-green-100 transition-colors">
+                        <i class="fa-solid fa-comments mr-1"></i> 互动诱饵
+                    </button>
+                     <button @click="clearText" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-full text-xs font-semibold hover:bg-slate-200 transition-colors ml-auto">
+                        <i class="fa-solid fa-trash mr-1"></i>
+                    </button>
+                </div>
+
+                <!-- Textarea -->
+                <div class="relative group">
+                    <textarea 
+                        v-model="content" 
+                        class="editor-textarea w-full text-lg p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-blue-400 focus:bg-white transition-all placeholder-slate-400"
+                        placeholder="在此撰写。如果内容较长，右侧会自动预览为 Thread 模式..."
+                        ref="textarea"
+                    ></textarea>
+                    
+                    <!-- Character Counter -->
+                    <div class="absolute bottom-4 right-4 text-xs font-medium px-2 py-1 rounded bg-white/80 backdrop-blur border border-slate-200"
+                        :class="charCount > 280 ? 'text-red-500' : 'text-slate-500'">
+                        {{ charCount }} / 280 (长文模式)
+                    </div>
+                </div>
+
+                <!-- Simulation Dashboard (Replaces Score Card) -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800 text-sm">模拟运行控制台</h3>
+                        <button @click="runSimulation" :disabled="isSimulating" class="px-4 py-1.5 bg-black text-white text-xs font-bold rounded-full hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center">
+                            <i class="fa-solid fa-play mr-1" :class="{'fa-spin': isSimulating}"></i> {{ isSimulating ? '计算中...' : '开始模拟' }}
+                        </button>
+                    </div>
+                    
+                    <div v-if="simulationResult" class="p-4 space-y-4">
+                        <!-- Interaction Breakdown -->
+                        <div class="grid grid-cols-4 gap-2 text-center mb-4">
+                            <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <div class="text-xs text-slate-500 mb-1"><i class="fa-regular fa-heart text-red-500"></i> Like</div>
+                                <div class="font-bold text-slate-800">{{ simulationResult.stats.likes }}</div>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <div class="text-xs text-slate-500 mb-1"><i class="fa-solid fa-retweet text-green-500"></i> RT</div>
+                                <div class="font-bold text-slate-800">{{ simulationResult.stats.reposts }}</div>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <div class="text-xs text-slate-500 mb-1"><i class="fa-regular fa-comment text-blue-500"></i> Reply</div>
+                                <div class="font-bold text-slate-800">{{ simulationResult.stats.replies }}</div>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <div class="text-xs text-slate-500 mb-1"><i class="fa-regular fa-bookmark text-yellow-500"></i> Save</div>
+                                <div class="font-bold text-slate-800">{{ simulationResult.stats.bookmarks }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Funnel Visualization -->
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-medium text-slate-500">
+                                <span>候选池 (In-Network)</span>
+                                <span>{{ simulationResult.stage1_reach }} 人</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-blue-400" style="width: 100%"></div>
+                            </div>
+                            
+                            <div class="flex justify-between text-xs font-medium text-slate-500">
+                                <span>初步筛选 (Light Ranker)</span>
+                                <span>{{ simulationResult.stage2_pass }}% 通过率</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-blue-500" :style="`width: ${simulationResult.stage2_pass}%`"></div>
+                            </div>
+
+                            <div class="flex justify-between text-xs font-medium text-slate-500">
+                                <span>最终曝光 (For You)</span>
+                                <span class="text-green-600 font-bold">{{ simulationResult.total_impressions }}</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-green-500" :style="`width: ${Math.min(100, (simulationResult.total_impressions / (userStats.followers * 10)) * 100)}%`"></div>
+                            </div>
+                        </div>
+
+                        <!-- Viral Probability Badge -->
+                        <div class="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            <span class="text-sm font-bold text-slate-700">爆款概率</span>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-2xl font-black" :class="viralColor">{{ simulationResult.viral_prob }}%</span>
+                                <i v-if="simulationResult.viral_prob > 80" class="fa-solid fa-fire text-red-500 animate-pulse"></i>
+                            </div>
+                        </div>
+
+                        <!-- Logs -->
+                        <div class="bg-black text-green-400 p-3 rounded-lg text-xs font-mono h-32 overflow-y-auto">
+                            <div v-for="(log, i) in simulationLogs" :key="i" class="mb-1">
+                                <span class="opacity-50">[{{ log.time }}]</span> {{ log.msg }}
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="p-8 text-center text-slate-400 text-sm">
+                        点击“开始模拟”查看算法预测结果
+                    </div>
+                </div>
+
+                <!-- Analysis Cards (Collapsed) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-50 hover:opacity-100 transition-opacity">
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-sm mb-3 flex items-center">
+                            <i class="fa-solid fa-robot mr-2 text-slate-500"></i> 算法健康度检查
+                        </h3>
+                        <ul class="space-y-2 text-sm">
+                            <li class="flex items-center justify-between">
+                                <span class="text-slate-600">钩子吸引力 (前50字)</span>
+                                <span :class="hookScoreColor" class="font-bold">{{ hookScoreText }}</span>
+                            </li>
+                            <li class="flex items-center justify-between">
+                                <span class="text-slate-600">可读性 (分段/空行)</span>
+                                <span :class="readabilityColor" class="font-bold">{{ readabilityText }}</span>
+                            </li>
+                            <li class="flex items-center justify-between">
+                                <span class="text-slate-600">互动诱饵 (疑问/引导)</span>
+                                <span :class="ctaScore > 0 ? 'text-green-600' : 'text-slate-400'" class="font-bold">
+                                    <i v-if="ctaScore > 0" class="fa-solid fa-check"></i>
+                                    <span v-else>未检测到</span>
+                                </span>
+                            </li>
+                            <li class="flex items-center justify-between">
+                                <span class="text-slate-600">情绪唤起 (Power Words)</span>
+                                <span :class="hasEmotion ? 'text-green-600' : 'text-slate-400'" class="font-bold">
+                                    <i v-if="hasEmotion" class="fa-solid fa-fire"></i>
+                                    <span v-else>平淡</span>
+                                </span>
+                            </li>
+                             <li class="flex items-center justify-between">
+                                <span class="text-slate-600">风险词检测</span>
+                                <span :class="riskWords.length > 0 ? 'text-red-500' : 'text-green-500'" class="font-bold">
+                                    {{ riskWords.length > 0 ? riskWords.length + ' 个风险词' : '安全' }}
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Actionable Tips -->
+                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 shadow-sm">
+                        <h3 class="font-bold text-blue-800 text-sm mb-3 flex items-center">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> 优化建议
+                        </h3>
+                        <ul class="space-y-2 text-xs text-blue-900">
+                            <li v-if="!hasHook" class="flex items-start">
+                                <i class="fa-solid fa-circle-exclamation mt-1 mr-2 opacity-70"></i>
+                                开头太平淡。尝试加入数字、疑问或强烈观点，防止被滑走。
+                            </li>
+                             <li v-if="isLongBlock" class="flex items-start">
+                                <i class="fa-solid fa-align-justify mt-1 mr-2 opacity-70"></i>
+                                段落过长，用户停留时间(Dwell Time)可能变短。建议多分段，增加空行。
+                            </li>
+                            <li v-if="!hasCTA" class="flex items-start">
+                                <i class="fa-solid fa-comment-dots mt-1 mr-2 opacity-70"></i>
+                                缺少互动引导。Reply 权重极高，建议在结尾提一个问题。
+                            </li>
+                            <li v-if="hasLinkInMain" class="flex items-start">
+                                <i class="fa-solid fa-link mt-1 mr-2 opacity-70"></i>
+                                正文包含链接可能会降权。建议将链接放在评论区，或配图。
+                            </li>
+                            <li v-if="tips.length === 0" class="flex items-start font-medium">
+                                <i class="fa-solid fa-thumbs-up mt-1 mr-2 opacity-70"></i>
+                                很棒！这条推文结构看起来非常不错。
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Media Simulation -->
+                 <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <h3 class="font-bold text-slate-800 text-sm mb-3">媒体占位符 (模拟预览)</h3>
+                    <div class="flex gap-2">
+                        <button @click="mediaType = 'none'" :class="mediaType === 'none' ? 'bg-black text-white' : 'bg-slate-100 text-slate-600'" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">无媒体</button>
+                        <button @click="mediaType = 'image'" :class="mediaType === 'image' ? 'bg-black text-white' : 'bg-slate-100 text-slate-600'" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">单图 (Image)</button>
+                        <button @click="mediaType = 'video'" :class="mediaType === 'video' ? 'bg-black text-white' : 'bg-slate-100 text-slate-600'" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">视频 (Video)</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Right: Real-time Preview -->
+        <div class="flex-1 bg-slate-100 flex flex-col items-center justify-center p-8 overflow-hidden">
+            <!-- Speed up Button (Moved to right) -->
+            <div class="mb-8 w-full max-w-[375px] animate-fade-in-up">
+                <a href="https://t.me/XCarTeamBot" target="_blank" class="flex items-center justify-center space-x-3 w-full py-4 bg-gradient-to-r from-orange-500 via-red-500 to-purple-600 text-white rounded-xl font-black text-lg shadow-lg hover:shadow-2xl transition-all transform hover:-translate-y-1 group">
+                    <i class="fa-solid fa-bolt-lightning animate-bounce text-yellow-300"></i>
+                    <span class="tracking-wider">加速帖子 曝光+100%</span>
+                    <div class="bg-white/20 px-2 py-1 rounded text-[10px] font-bold backdrop-blur-sm group-hover:bg-white/30 transition-colors">
+                        前往 TG 互助
+                    </div>
+                </a>
+                <p class="text-center text-slate-400 text-xs mt-2 font-medium">
+                    <i class="fa-solid fa-circle-info mr-1"></i> 加入互助车队，通过算法冷启动
+                </p>
+            </div>
+
+            <div class="mobile-frame flex flex-col scale-90 md:scale-100 transition-transform">
+                <div class="notch"></div>
+                
+                <!-- Mobile Status Bar -->
+                <div class="h-12 bg-white w-full flex justify-between items-center px-6 pt-2 z-10">
+                    <span class="text-xs font-bold">9:41</span>
+                    <div class="flex space-x-1.5">
+                        <i class="fa-solid fa-signal text-xs"></i>
+                        <i class="fa-solid fa-wifi text-xs"></i>
+                        <i class="fa-solid fa-battery-full text-xs"></i>
+                    </div>
+                </div>
+
+                <!-- App Header -->
+                <div class="h-12 bg-white/95 backdrop-blur w-full flex justify-between items-center px-4 border-b border-slate-100 z-10 sticky top-0">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+                         <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
+                    </div>
+                    <i class="fa-brands fa-x-twitter text-xl"></i>
+                    <i class="fa-solid fa-gear text-slate-800"></i>
+                </div>
+
+                <!-- Feed Content -->
+                <div class="flex-1 bg-white overflow-y-auto pb-20">
+                    
+                    <!-- Thread View -->
+                    <div v-if="isThreadMode">
+                        <div v-for="(tweet, index) in threadTweets" :key="index" class="p-4 border-b border-slate-100 relative">
+                            <!-- Thread Line (if not last) -->
+                            <div v-if="index < threadTweets.length - 1" class="absolute left-[38px] top-[60px] bottom-[-20px] w-0.5 bg-slate-200 z-0"></div>
+                            
+                            <div class="flex space-x-3 relative z-10">
+                                <div class="shrink-0">
+                                    <div class="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=User123" alt="My Avatar" />
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center space-x-1 truncate">
+                                            <span class="font-bold text-slate-900 text-[15px]">Creator</span>
+                                            <i class="fa-solid fa-certificate text-blue-500 text-xs"></i>
+                                            <span class="text-slate-500 text-[15px]">@creator</span>
+                                            <span class="text-slate-500 text-[15px]">·</span>
+                                            <span class="text-slate-500 text-[15px]">1h</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-1 text-[15px] leading-normal text-slate-900 whitespace-pre-wrap break-words">
+                                        <span v-html="formatTweet(tweet)"></span>
+                                    </div>
+
+                                    <!-- Action Bar (Simplified for thread) -->
+                                    <div class="flex justify-between mt-3 max-w-[300px] text-slate-500">
+                                        <i class="fa-regular fa-comment text-sm"></i>
+                                        <i class="fa-solid fa-retweet text-sm"></i>
+                                        <i class="fa-regular fa-heart text-sm"></i>
+                                        <i class="fa-solid fa-chart-simple text-sm"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Single Post View -->
+                    <div v-else class="p-4 border-b border-slate-100">
+                        <div class="flex space-x-3">
+                            <div class="shrink-0">
+                                <div class="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=User123" alt="My Avatar" />
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-1 truncate">
+                                        <span class="font-bold text-slate-900 text-[15px]">Creator</span>
+                                        <i class="fa-solid fa-certificate text-blue-500 text-xs"></i>
+                                        <span class="text-slate-500 text-[15px]">@creator</span>
+                                        <span class="text-slate-500 text-[15px]">·</span>
+                                        <span class="text-slate-500 text-[15px]">1h</span>
+                                    </div>
+                                    <i class="fa-solid fa-ellipsis text-slate-400 text-sm"></i>
+                                </div>
+                                
+                                <!-- Tweet Body with Show More logic -->
+                                <div class="mt-1 text-[15px] leading-normal text-slate-900 whitespace-pre-wrap break-words" :class="{'line-clamp-5': !expanded && needsFold}">
+                                    <span v-html="formattedContent"></span>
+                                </div>
+                                <button v-if="!expanded && needsFold" @click="expanded = true" class="text-blue-500 text-[15px] hover:underline mt-1">Show more</button>
+
+                                <!-- Media Placeholder -->
+                                <div v-if="mediaType !== 'none'" class="mt-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 relative" 
+                                     :class="mediaType === 'video' ? 'aspect-video' : 'aspect-[4/3]'">
+                                    
+                                    <img v-if="mediaType === 'image'" src="https://picsum.photos/seed/picsum/600/400" class="w-full h-full object-cover" />
+                                    
+                                    <div v-if="mediaType === 'video'" class="w-full h-full flex items-center justify-center bg-black">
+                                        <div class="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center text-white pl-1">
+                                            <i class="fa-solid fa-play"></i>
+                                        </div>
+                                        <div class="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">0:45</div>
+                                    </div>
+                                </div>
+
+                                <!-- Action Bar -->
+                                <div class="flex justify-between mt-3 max-w-[300px] text-slate-500">
+                                    <div class="group flex items-center space-x-1 cursor-pointer hover:text-blue-500">
+                                        <div class="p-2 -ml-2 rounded-full group-hover:bg-blue-50 transition-colors">
+                                            <i class="fa-regular fa-comment text-lg"></i>
+                                        </div>
+                                        <span class="text-xs">24</span>
+                                    </div>
+                                    <div class="group flex items-center space-x-1 cursor-pointer hover:text-green-500">
+                                        <div class="p-2 -ml-2 rounded-full group-hover:bg-green-50 transition-colors">
+                                            <i class="fa-solid fa-retweet text-lg"></i>
+                                        </div>
+                                        <span class="text-xs">5</span>
+                                    </div>
+                                    <div class="group flex items-center space-x-1 cursor-pointer hover:text-pink-500">
+                                        <div class="p-2 -ml-2 rounded-full group-hover:bg-pink-50 transition-colors">
+                                            <i class="fa-regular fa-heart text-lg"></i>
+                                        </div>
+                                        <span class="text-xs">128</span>
+                                    </div>
+                                    <div class="group flex items-center space-x-1 cursor-pointer hover:text-blue-500">
+                                        <div class="p-2 -ml-2 rounded-full group-hover:bg-blue-50 transition-colors">
+                                            <i class="fa-solid fa-chart-simple text-lg"></i>
+                                        </div>
+                                        <span class="text-xs">2.4K</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Dummy Next Post -->
+                     <div class="p-4 border-b border-slate-100 opacity-50">
+                        <div class="flex space-x-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-200"></div>
+                            <div class="flex-1 space-y-2">
+                                <div class="h-4 bg-slate-200 rounded w-1/3"></div>
+                                <div class="h-16 bg-slate-200 rounded w-full"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Bottom Nav -->
+                <div class="h-14 bg-white border-t border-slate-200 flex justify-around items-center absolute bottom-0 w-full">
+                    <i class="fa-solid fa-house text-xl text-black"></i>
+                    <i class="fa-solid fa-magnifying-glass text-xl text-slate-400"></i>
+                    <i class="fa-regular fa-bell text-xl text-slate-400"></i>
+                    <i class="fa-regular fa-envelope text-xl text-slate-400"></i>
+                </div>
+            </div>
+        </div>
+
+    <!-- Manual Modal -->
+        <div v-if="showManual" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-in-up">
+                <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <h2 class="font-bold text-xl text-slate-800"><i class="fa-solid fa-book-open mr-2 text-blue-500"></i>流量增长手册</h2>
+                    <button @click="showManual = false" class="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300 flex items-center justify-center transition-colors text-slate-500">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-8 prose prose-slate max-w-none text-slate-700 leading-relaxed">
+                    <h1 class="text-2xl font-bold mb-4 text-slate-900">X 流量增长手册（人人都能看懂版）</h1>
+                    <p class="text-slate-500 mb-8 text-lg border-l-4 border-blue-500 pl-4 bg-blue-50 py-2 rounded-r">把算法想成一个“超快的编辑部”，增长不是骗算法，而是让内容更容易被找到、打高分、不过滤。</p>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4 flex items-center"><span class="bg-black text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">1</span> 算法到底在算什么？</h3>
+                    <p class="mb-4">它在算你“会不会行动”。正向动作（点赞、回复、转发、停留）加分，负向动作（拉黑、举报、不感兴趣）减分。增长本质是：<strong>提高正向概率，降低负向概率</strong>。</p>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4 flex items-center"><span class="bg-black text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">2</span> 三道关卡</h3>
+                    <ul class="list-disc pl-5 space-y-2 mb-4">
+                        <li><strong>召回（找稿子）</strong>：网络内（熟人）+ 网络外（陌生人）。想爆必须做网络外召回（主题清晰）。</li>
+                        <li><strong>排序（打分）</strong>：回复、转发、停留权重最高。</li>
+                        <li><strong>过滤（过审）</strong>：去重、拉黑、违规直接丢掉。</li>
+                    </ul>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4 flex items-center"><span class="bg-black text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">3</span> 增长原则</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            <strong class="text-slate-900 block mb-1">原则1：主题要窄，表达要清</strong>
+                            <span class="text-sm">像书的目录一样清晰。</span>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            <strong class="text-slate-900 block mb-1">原则2：给理由让用户互动</strong>
+                            <span class="text-sm">不要“求赞”，要“邀请补充”或“引发共鸣”。</span>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            <strong class="text-slate-900 block mb-1">原则3：先网络内，再网络外</strong>
+                            <span class="text-sm">先在熟人圈跑通互动数据。</span>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            <strong class="text-slate-900 block mb-1">原则4：底线是避免负反馈</strong>
+                            <span class="text-sm">标题党、诱导、争议无边界会直接毁号。</span>
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4 flex items-center"><span class="bg-black text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">4</span> 30天增长计划</h3>
+                    <div class="bg-green-50 p-6 rounded-xl border border-green-100 text-green-800 space-y-2">
+                        <p><strong>📅 第1-7天</strong>：定足够窄的主题，每天1条练手感。</p>
+                        <p><strong>📅 第8-14天</strong>：每天找10个同主题的人真诚互动。</p>
+                        <p><strong>📅 第15-21天</strong>：做2-3条清单/教程/复盘贴，争取被转发。</p>
+                        <p><strong>📅 第22-30天</strong>：做A/B测试，优化标题和结构。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Modal -->
+        <div v-if="showReport" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-in-up">
+                <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <h2 class="font-bold text-xl text-slate-800"><i class="fa-solid fa-chart-pie mr-2 text-purple-500"></i>架构分析报告</h2>
+                    <button @click="showReport = false" class="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300 flex items-center justify-center transition-colors text-slate-500">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-8 prose prose-slate max-w-none text-slate-700 leading-relaxed">
+                    <h1 class="text-2xl font-bold mb-4 text-slate-900">X 架构分析报告（端到端）</h1>
+                    <p class="text-slate-500 mb-8 text-lg border-l-4 border-purple-500 pl-4 bg-purple-50 py-2 rounded-r">基于 GitHub 源码分析的推荐系统全链路拆解。</p>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4">1. 架构总览</h3>
+                    <div class="bg-slate-800 text-slate-200 p-4 rounded-xl font-mono text-sm mb-4 overflow-x-auto">
+                        查询补全 → 多源召回 (Thunder/Phoenix) → 候选补全 → 规则过滤 → 机器学习打分 (Phoenix/Weighted) → 多样性/OON调整 → 最终选择
+                    </div>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4">2. 核心机制</h3>
+                    <ul class="list-disc pl-5 space-y-2 mb-4">
+                        <li><strong>多源召回</strong>：同时从关注网络（Thunder）和全网向量检索（Phoenix Retrieval）获取候选。</li>
+                        <li><strong>候选隔离</strong>：打分时每条推文独立计算，互不影响，保证稳定性。</li>
+                        <li><strong>多目标预测</strong>：预测 Like, Reply, Repost 等 10+ 种行为概率，再加权合成。</li>
+                    </ul>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4">3. 用户影响分析</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse border border-slate-200 mt-2 text-sm rounded-lg overflow-hidden">
+                            <tr class="bg-slate-100 text-left">
+                                <th class="border border-slate-200 p-3">用户类型</th>
+                                <th class="border border-slate-200 p-3">关键影响</th>
+                            </tr>
+                            <tr>
+                                <td class="border border-slate-200 p-3 font-bold">新用户</td>
+                                <td class="border border-slate-200 p-3">依赖 Query Hydration 的地域/语言信号，推荐较泛。建议多互动加速画像收敛。</td>
+                            </tr>
+                            <tr>
+                                <td class="border border-slate-200 p-3 font-bold">重度互动者</td>
+                                <td class="border border-slate-200 p-3">信号丰富，个性化极强。容易陷入“信息茧房”，需要多样性策略干预。</td>
+                            </tr>
+                            <tr>
+                                <td class="border border-slate-200 p-3 font-bold">只看不动者</td>
+                                <td class="border border-slate-200 p-3">主要靠 Dwell/Click 信号。如果算法权重偏向显式互动，体验会变差。</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <h3 class="text-xl font-bold mt-8 mb-4">4. 为什么旧方式不行了？</h3>
+                    <p class="mb-4">旧的“时间线+简单规则”无法应对<strong>供给爆炸</strong>（内容太多）、<strong>多目标冲突</strong>（既要留存又要商业化）和<strong>对抗性</strong>（垃圾内容）。现在的“两阶段+Transformer”是唯一解。</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <script>
+        const { createApp, ref, computed, watch } = Vue;
+
+        createApp({
+            setup() {
+                const content = ref('');
+                const mediaType = ref('none'); // none, image, video
+                const expanded = ref(false);
+                const copied = ref(false);
+                const textarea = ref(null);
+                
+                // Simulation State
+                const showManual = ref(false);
+                const showReport = ref(false);
+                const isSimulating = ref(false);
+                const simulationResult = ref(null);
+                const simulationLogs = ref([]);
+                const userStats = ref({
+                    followers: 1000,
+                    isVerified: false
+                });
+
+                // --- 算法规则库 (模拟后端逻辑) ---
+                const riskWordsList = ['hack', 'buy followers', 'crypto scam', 'giveaway', 'free money', 'dm for', 'check bio'];
+                // 优化 Hook 正则，避免纯数字被误判
+                const hookPatterns = [/^\d+[.、)）]/, /^\d+个/, /[?!？！]$/, /^(如何|为什么|注意|警告|揭秘|实操|停止|这里|如果)/];
+                const ctaPatterns = [/(评论|告诉|觉得|点赞|转推|收藏|RT|reply|thoughts|agree)/i, /[?？]$/];
+                const emotionPatterns = [/(shocking|insane|dead|secret|illegal|warning|hate|love|obsessed|never|always|worst|best|disaster|game-changer|unbelievable|crazy|stop|don't|mistake|wrong|right|truth|lie)/i];
+
+                // --- 计算属性 ---
+                const charCount = computed(() => content.value.length);
+                const lines = computed(() => content.value.split('\n'));
+                
+                // 模拟 Show more 逻辑: 超过 280 字符 或者 超过 5 行
+                const needsFold = computed(() => {
+                    return charCount.value > 280 || lines.value.length > 5;
+                });
+
+                // 格式化内容（高亮）
+                const formattedContent = computed(() => {
+                    let text = content.value;
+                    // 转义 HTML
+                    text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    
+                    // 高亮 Hashtags
+                    text = text.replace(/(#\w+)/g, '<span class="text-blue-500 hover:underline cursor-pointer">$1</span>');
+                    // 高亮 Mentions
+                    text = text.replace(/(@\w+)/g, '<span class="text-blue-500 hover:underline cursor-pointer">$1</span>');
+                    // 高亮 Links
+                    text = text.replace(/(https?:\/\/[^\s]+)/g, '<span class="text-blue-500 hover:underline cursor-pointer">$1</span>');
+                    
+                    // 高亮风险词
+                    riskWordsList.forEach(word => {
+                        const reg = new RegExp(`(${word})`, 'gi');
+                        text = text.replace(reg, '<span class="highlight-risk">$1</span>');
+                    });
+
+                    return text;
+                });
+
+                // 分析逻辑
+                const riskWords = computed(() => {
+                    return riskWordsList.filter(word => content.value.toLowerCase().includes(word));
+                });
+
+                // Hook 分析 (取前 50 字符)
+                const hasHook = computed(() => {
+                    const first50 = content.value.slice(0, 50).trim();
+                    if (first50.length === 0) return false;
+                    return hookPatterns.some(p => p.test(first50));
+                });
+
+                const hookScoreText = computed(() => {
+                    if (content.value.length === 0) return '待检测';
+                    if (hasHook.value) return '强力';
+                    return '较弱';
+                });
+                const hookScoreColor = computed(() => {
+                    if (content.value.length === 0) return 'text-slate-400';
+                    return hasHook.value ? 'text-green-600' : 'text-orange-500';
+                });
+
+                // 可读性分析
+                const isLongBlock = computed(() => {
+                    // 如果有任意一段超过 150 字符没有换行，视为长段落
+                    return lines.value.some(line => line.length > 150);
+                });
+                const readabilityText = computed(() => {
+                    if (content.value.length === 0) return '待检测';
+                    if (isLongBlock.value) return '密集';
+                    if (lines.value.length > 1) return '良好';
+                    return '一般';
+                });
+                const readabilityColor = computed(() => {
+                    if (content.value.length === 0) return 'text-slate-400';
+                    if (isLongBlock.value) return 'text-red-500';
+                    return 'text-green-600';
+                });
+
+                // CTA 分析
+                const hasCTA = computed(() => {
+                    const lastPart = content.value.slice(-100); // 检查最后100字
+                    return ctaPatterns.some(p => p.test(lastPart));
+                });
+                const ctaScore = computed(() => hasCTA.value ? 1 : 0);
+
+                const hasLinkInMain = computed(() => /https?:\/\//.test(content.value));
+                
+                const hasEmotion = computed(() => {
+                    return emotionPatterns.some(p => p.test(content.value));
+                });
+
+                // Thread Logic
+                const isThreadMode = computed(() => {
+                    // 如果有 '===' 分隔符，或者是长文且有多段落
+                    if (content.value.includes('===')) return true;
+                    if (content.value.length > 280 && content.value.split('\n\n').length > 2) return true;
+                    return false;
+                });
+
+                const threadTweets = computed(() => {
+                    if (content.value.includes('===')) {
+                        return content.value.split('===').map(t => t.trim()).filter(t => t);
+                    }
+                    // 自动分割长文：按双换行分割，但每段尽量凑够 200 字
+                    const paragraphs = content.value.split('\n\n');
+                    let tweets = [];
+                    let currentTweet = '';
+                    
+                    paragraphs.forEach(p => {
+                        if ((currentTweet + '\n\n' + p).length < 280) {
+                            currentTweet += (currentTweet ? '\n\n' : '') + p;
+                        } else {
+                            if (currentTweet) tweets.push(currentTweet);
+                            currentTweet = p;
+                        }
+                    });
+                    if (currentTweet) tweets.push(currentTweet);
+                    
+                    // 如果自动分割失败（只有一段），强行切分或保留
+                    if (tweets.length === 0 && content.value) tweets.push(content.value);
+                    
+                    return tweets;
+                });
+
+                const formatTweet = (rawText) => {
+                     let text = rawText;
+                    text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    text = text.replace(/(#\w+)/g, '<span class="text-blue-500 hover:underline cursor-pointer">$1</span>');
+                    text = text.replace(/(@\w+)/g, '<span class="text-blue-500 hover:underline cursor-pointer">$1</span>');
+                    text = text.replace(/(https?:\/\/[^\s]+)/g, '<span class="text-blue-500 hover:underline cursor-pointer">$1</span>');
+                     riskWordsList.forEach(word => {
+                        const reg = new RegExp(`(${word})`, 'gi');
+                        text = text.replace(reg, '<span class="highlight-risk">$1</span>');
+                    });
+                    return text;
+                };
+
+                // --- 综合评分逻辑 ---
+                const totalScore = computed(() => {
+                    if (content.value.length === 0) return 0;
+                    
+                    let score = 60; // 基础分
+                    
+                    // Hook (20分)
+                    if (hasHook.value) score += 20;
+                    
+                    // 可读性 (10分)
+                    if (!isLongBlock.value && lines.value.length > 1) score += 10;
+                    
+                    // CTA (10分)
+                    if (hasCTA.value) score += 10;
+                    
+                    // 情绪唤起 (10分)
+                    if (hasEmotion.value) score += 10;
+
+                    // 扣分项
+                    // 风险词 (每个扣10分)
+                    score -= riskWords.value.length * 10;
+                    
+                    // 正文链接 (扣10分)
+                    if (hasLinkInMain.value) score -= 10;
+                    
+                    return Math.max(0, Math.min(100, score));
+                });
+
+                const scoreColor = computed(() => {
+                    if (totalScore.value >= 80) return 'text-green-500';
+                    if (totalScore.value >= 60) return 'text-orange-500';
+                    return 'text-red-500';
+                });
+                
+                const scoreRingColor = computed(() => {
+                     if (totalScore.value >= 80) return 'stroke-green-500';
+                    if (totalScore.value >= 60) return 'stroke-orange-500';
+                    return 'stroke-red-500';
+                });
+
+                const viralColor = computed(() => {
+                    if (!simulationResult.value) return '';
+                    const prob = simulationResult.value.viral_prob;
+                    if (prob >= 80) return 'text-red-500';
+                    if (prob >= 50) return 'text-green-500';
+                    return 'text-slate-500';
+                });
+
+                // 建议列表
+                const tips = computed(() => {
+                    const t = [];
+                    if (!hasHook.value && content.value.length > 0) t.push('hook');
+                    if (isLongBlock.value) t.push('format');
+                    if (!hasCTA.value && content.value.length > 0) t.push('cta');
+                    if (hasLinkInMain.value) t.push('link');
+                    return t;
+                });
+
+                // --- Simulation Logic ---
+                const addLog = (msg) => {
+                    simulationLogs.value.unshift({
+                        time: new Date().toLocaleTimeString().split(' ')[0],
+                        msg
+                    });
+                };
+
+                const runSimulation = async () => {
+                    if (content.value.length === 0) {
+                        alert('请先输入内容');
+                        return;
+                    }
+
+                    isSimulating.value = true;
+                    simulationResult.value = null;
+                    simulationLogs.value = [];
+
+                    addLog('Initializing candidate pipeline...');
+                    
+                    // 1. Define Base Action Probabilities (Generic User Behavior)
+                    // Like is easiest, Bookmark is rare, Reply is high effort
+                    let p_like = 0.008;      // 0.8% base like rate
+                    let p_repost = 0.001;    // 0.1% base repost rate
+                    let p_reply = 0.0005;    // 0.05% base reply rate
+                    let p_bookmark = 0.0003; // 0.03% base bookmark rate
+                    
+                    // --- Content Modifiers ---
+                    
+                    // Hook -> Increases Dwell Time -> Increases all probs slightly
+                    if (hasHook.value) {
+                        p_like *= 1.5;
+                        p_repost *= 1.2;
+                        p_reply *= 1.2;
+                        p_bookmark *= 1.5; // Good hook often implies value
+                    }
+
+                    // CTA -> Increases specific action strongly
+                    if (hasCTA.value) {
+                        const textLower = content.value.toLowerCase();
+                        if (textLower.match(/(comment|reply|thoughts|tell|评论|告诉|觉得)/i)) p_reply *= 3.0;
+                        if (textLower.match(/(rt|repost|share|spread|转推|转发)/i)) p_repost *= 3.0;
+                        if (textLower.match(/(save|bookmark|收藏|马)/i)) p_bookmark *= 3.0;
+                        if (textLower.match(/(like|agree|点赞)/i)) p_like *= 2.0;
+                        // Generic CTA boost if specific keyword not found but pattern matched
+                        p_reply *= 1.2; 
+                    }
+
+                    // Emotion -> Increases Reply and Repost (Reactionary)
+                    if (hasEmotion.value) {
+                        p_reply *= 1.5;
+                        p_repost *= 1.5;
+                        p_like *= 1.2;
+                    }
+
+                    // Media -> Increases Like and Retweet
+                    if (mediaType.value !== 'none') {
+                        p_like *= 2.0;
+                        p_repost *= 1.5;
+                        // Video specifically boosts dwell time & retention
+                        if (mediaType.value === 'video') {
+                             p_repost *= 1.2;
+                             p_bookmark *= 1.2;
+                        }
+                    }
+
+                    // Link Penalty (Algo hates leaving platform) -> Reduces Reach & Repost
+                    if (hasLinkInMain.value) {
+                        p_repost *= 0.5;
+                        p_like *= 0.8;
+                    }
+
+                    // Readability -> Long block reduces finish rate -> reduces Like/Repost
+                    if (isLongBlock.value) {
+                        p_like *= 0.7;
+                        p_repost *= 0.6;
+                        p_reply *= 0.8;
+                    }
+                    
+                    // Risk Words -> Zero visibility
+                    if (riskWords.value.length > 0) {
+                        p_like = 0; p_repost = 0; p_reply = 0; p_bookmark = 0;
+                    }
+
+                    // Short Content Penalty (Anti-Spam)
+                    if (content.value.length < 5 && mediaType.value === 'none') {
+                        // "GM" case: almost zero engagement unless verified (handled by user boost later)
+                        p_like = 0.0001; 
+                        p_repost = 0.00001;
+                        p_reply = 0.0001;
+                        p_bookmark = 0;
+                        addLog('⚠️ Content too short. Interaction probabilities slashed.');
+                    } else if (content.value.length < 15 && mediaType.value === 'none') {
+                        p_like *= 0.5;
+                        p_repost *= 0.3;
+                        p_bookmark *= 0.1;
+                        addLog('⚠️ Short content detected. Penalized.');
+                    }
+
+                    // User Boost (Verified users get better distribution -> higher effective probs)
+                    let user_boost = 1.0;
+                    if (userStats.value.isVerified === true) user_boost = 2.0;
+                    if (userStats.value.isVerified === 'gold') user_boost = 5.0;
+                    
+                    // Apply boost
+                    p_like *= user_boost;
+                    p_repost *= user_boost;
+                    p_reply *= user_boost;
+                    p_bookmark *= user_boost;
+
+                    await new Promise(r => setTimeout(r, 800));
+                    addLog(`Probabilities: Like ${(p_like*100).toFixed(2)}%, RT ${(p_repost*100).toFixed(2)}%`);
+
+                    // 2. Stage 1: In-Network Simulation
+                    const followers = userStats.value.followers;
+                    const initial_reach = Math.floor(followers * 0.2); // 20% active followers
+                    addLog(`Stage 1: Pushed to ${initial_reach} followers`);
+                    
+                    await new Promise(r => setTimeout(r, 800));
+
+                    // Monte Carlo Simulation
+                    let stats = { likes: 0, reposts: 0, replies: 0, bookmarks: 0 };
+                    
+                    for (let i = 0; i < initial_reach; i++) {
+                        if (Math.random() < p_like) stats.likes++;
+                        if (Math.random() < p_repost) stats.reposts++;
+                        if (Math.random() < p_reply) stats.replies++;
+                        if (Math.random() < p_bookmark) stats.bookmarks++;
+                    }
+                    
+                    addLog(`Stage 1 Results: ${stats.likes} ❤️, ${stats.reposts} 🔁, ${stats.replies} 💬`);
+
+                    // 3. Weighted Score Calculation (X Algorithm weights)
+                    // Reply: 54.0, Retweet: 20.0, Like: 0.5 (approx scaled down for sim)
+                    // Simplified for this scale:
+                    // Reply = 10 points
+                    // Repost = 5 points
+                    // Bookmark = 8 points (Signal for quality)
+                    // Like = 1 point
+                    
+                    const weighted_score = (stats.likes * 1) + (stats.reposts * 5) + (stats.replies * 10) + (stats.bookmarks * 8);
+                    const score_per_user = weighted_score / initial_reach; // normalized score
+                    
+                    addLog(`Weighted Engagement Score: ${weighted_score.toFixed(1)}`);
+
+                    // 4. Breakout & Virality
+                    let stage2_pass = 0;
+                    let viral_impressions = 0;
+                    
+                    // Threshold: Need enough weighted signal. 
+                    // E.g., 1000 users -> 200 reach.
+                    // If 2 likes (2pts) -> score 2. 2/200 = 0.01. Too low.
+                    // If 1 RT (5pts) + 1 Reply (10pts) + 5 Likes (5pts) -> 20pts. 20/200 = 0.1. Good.
+                    
+                    const breakout_threshold = 0.05; // 0.05 score per user reachable
+                    
+                    if (score_per_user > breakout_threshold && riskWords.value.length === 0) {
+                        stage2_pass = 100;
+                        addLog('🚀 HIGH SIGNAL! Breaking out of network.');
+                        
+                        // Viral Multiplier
+                        // Higher score -> Higher multiplier
+                        const multiplier = Math.max(10, score_per_user * 500); // Dynamic multiplier
+                        viral_impressions = Math.floor(weighted_score * multiplier * user_boost);
+                        
+                        addLog(`Stage 3: For You feed amplification x${multiplier.toFixed(0)}`);
+                    } else {
+                        stage2_pass = 10;
+                        addLog('❌ Low signal. Growth stopped.');
+                        viral_impressions = Math.floor(weighted_score * 5); // Small organic ripple
+                    }
+
+                    await new Promise(r => setTimeout(r, 800));
+
+                    const total_impressions = initial_reach + viral_impressions;
+                    // Prob based on score_per_user relative to threshold
+                    const viral_prob = Math.min(99, Math.floor((score_per_user / (breakout_threshold * 2)) * 100));
+
+                    simulationResult.value = {
+                        stage1_reach: initial_reach,
+                        stage2_pass: stage2_pass,
+                        total_impressions: total_impressions,
+                        viral_prob: viral_prob,
+                        stats: stats // Pass stats to UI
+                    };
+                    
+                    addLog(`Simulation complete. Estimated Impressions: ${total_impressions}`);
+                    isSimulating.value = false;
+                };
+
+                // --- 操作方法 ---
+                const applyTemplate = (type) => {
+                    let text = '';
+                    if (type === 'contrarian') {
+                        text = "Unpopular opinion: [某个流行观点] is completely wrong.\n\nHere is why (and what to do instead):\n\n1. [原因一]\n\n2. [原因二]\n\n3. [原因三]\n\nIf you agree, let's debate in the comments. 👇";
+                    } else if (type === 'story') {
+                        text = "6 months ago I was [糟糕状态].\n\nToday I am [理想状态].\n\nHere is the exact blueprint I used (step-by-step):\n\n===\n\nStep 1: [第一步]\n\nDetails...\n\n===\n\nStep 2: [第二步]\n\nDetails...\n\n===\n\nStep 3: [第三步]\n\nDetails...\n\n===\n\nSave this thread for later! 🔖";
+                    } else if (type === 'listicle') {
+                        text = "10 tools to [达成目标] (that feel illegal to know):\n\n1. Tool A\n\n2. Tool B\n\n3. Tool C\n\n...\n\nWhich one is your favorite? 👇";
+                    }
+                    content.value = text;
+                };
+
+                const insertHook = () => {
+                    const hooks = [
+                        "3个让你相见恨晚的技巧：\n\n",
+                        "为什么大多数人都做错了？\n\n",
+                        "揭秘：如何在30天内实现增长？\n\n",
+                        "警告：不要再忽视这个问题了！\n\n",
+                        "数据不会说谎：\n\n",
+                        "Unpopular opinion: \n\n",
+                        "如果不读这条，你可能正在浪费钱：\n\n",
+                        "我花了5年才明白这个道理：\n\n",
+                        "停止做这件傻事：\n\n",
+                        "这里有一个残酷的真相：\n\n",
+                        "如何不花一分钱做到这一点？\n\n",
+                        "这是我今年学到的最重要的一课：\n\n",
+                        "99%的人都不知道的秘密工具：\n\n",
+                        "想知道高手是怎么做到的吗？\n\n",
+                        "别再被这些谎言骗了：\n\n",
+                        "简单的数学题（却能改变你的生活）：\n\n",
+                        "如何用1小时完成1天的工作？\n\n",
+                        "给20多岁年轻人的3个建议：\n\n",
+                        "在这个领域，只有这件事是重要的：\n\n",
+                        "如果你只能看一条推文，请看这条：\n\n"
+                    ];
+                    const randomHook = hooks[Math.floor(Math.random() * hooks.length)];
+                    content.value = randomHook + content.value;
+                };
+
+                const insertCTA = () => {
+                    const ctas = [
+                        "\n\n你遇到过这种情况吗？评论区告诉我👇",
+                        "\n\n如果觉得有用，请转推帮助更多人！♻️",
+                        "\n\n同意的请扣 1，不同意请扣 2 👇",
+                        "\n\nSave this for later! 🔖",
+                        "\n\nWhich one is your favorite? 👇",
+                        "\n\nTag a friend who needs to see this! 👥",
+                        "\n\n你有更好的建议吗？欢迎补充！👇",
+                        "\n\n如果是你，你会怎么选？🤔",
+                        "\n\n转发这条，让你的Timeline变聪明一点 🧠",
+                        "\n\n关注我 @AntCaveClub 获取更多干货 🚀",
+                        "\n\n点赞表示同意，转发表示强烈支持！❤️",
+                        "\n\n在评论区留下你的看法，我会一一回复 ✍️",
+                        "\n\n别忘了收藏，以后肯定用得上 ⭐️",
+                        "\n\n把这个发给你的老板看/同事看 👀",
+                        "\n\n你上次遇到这种事是什么时候？👇",
+                        "\n\n想看下一期教程吗？点赞告诉我 👍",
+                        "\n\n还有什么我漏掉的吗？请指教 👇",
+                        "\n\nSend this to someone who needs to hear this. 📩",
+                        "\n\nDrop a '🔥' if you agree!",
+                        "\n\n这就去试试吧，回来告诉我结果！🏃‍♂️"
+                    ];
+                    const randomCTA = ctas[Math.floor(Math.random() * ctas.length)];
+                    content.value = content.value + randomCTA;
+                };
+
+                const clearText = () => {
+                    if(confirm('确定清空内容吗？')) {
+                        content.value = '';
+                        mediaType.value = 'none';
+                    }
+                };
+                
+                const copyContent = () => {
+                    navigator.clipboard.writeText(content.value).then(() => {
+                        copied.value = true;
+                        setTimeout(() => copied.value = false, 2000);
+                    });
+                };
+
+                // Watch content change to reset expanded state
+                watch(content, () => {
+                    expanded.value = false;
+                });
+
+                return {
+                    content,
+                    mediaType,
+                    expanded,
+                    needsFold,
+                    formattedContent,
+                    charCount,
+                    riskWords,
+                    hookScoreText,
+                    hookScoreColor,
+                    hasHook,
+                    readabilityText,
+                    readabilityColor,
+                    isLongBlock,
+                    ctaScore,
+                    hasCTA,
+                    hasLinkInMain,
+                    tips,
+                    hasEmotion,
+                    applyTemplate,
+                    insertHook,
+                    insertCTA,
+                    formatTweet,
+                    isThreadMode,
+                    threadTweets,
+                    clearText,
+                    copyContent,
+                    copied,
+                    textarea,
+                    totalScore,
+                    scoreColor,
+                    scoreRingColor,
+                    // New exports
+                    isSimulating,
+                    showManual,
+                    showReport,
+                    simulationResult,
+                    simulationLogs,
+                    userStats,
+                    runSimulation,
+                    viralColor
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

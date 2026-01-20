@@ -1,250 +1,250 @@
-# X For You Feed Algorithm
+# X「为你推荐」信息流算法
 
-This repository contains the core recommendation system powering the "For You" feed on X. It combines in-network content (from accounts you follow) with out-of-network content (discovered through ML-based retrieval) and ranks everything using a Grok-based transformer model.
+本仓库包含支撑 X「为你推荐（For You）」信息流的核心推荐系统。它将网络内内容（来自你关注的账号）与网络外内容（通过基于机器学习的召回在全量语料中发现）进行合并，并使用基于 Grok 的 Transformer 模型对全部候选内容进行排序。
 
-> **Note:** The transformer implementation is ported from the [Grok-1 open source release](https://github.com/xai-org/grok-1) by xAI, adapted for recommendation system use cases.
+> **说明：** Transformer 的实现移植自 xAI 的 [Grok-1 开源版本](https://github.com/xai-org/grok-1)，并针对推荐系统场景做了适配。
 
-## Table of Contents
+## 目录
 
-- [Overview](#overview)
-- [System Architecture](#system-architecture)
-- [Components](#components)
+- [概览](#概览)
+- [系统架构](#系统架构)
+- [组件](#组件)
   - [Home Mixer](#home-mixer)
   - [Thunder](#thunder)
   - [Phoenix](#phoenix)
   - [Candidate Pipeline](#candidate-pipeline)
-- [How It Works](#how-it-works)
-  - [Pipeline Stages](#pipeline-stages)
-  - [Scoring and Ranking](#scoring-and-ranking)
-  - [Filtering](#filtering)
-- [Key Design Decisions](#key-design-decisions)
-- [License](#license)
+- [工作原理](#工作原理)
+  - [流水线阶段](#流水线阶段)
+  - [打分与排序](#打分与排序)
+  - [过滤](#过滤)
+- [关键设计决策](#关键设计决策)
+- [许可证](#许可证)
 
 ---
 
-## Overview
+## 概览
 
-The For You feed algorithm retrieves, ranks, and filters posts from two sources:
+「为你推荐」信息流算法会从两类来源召回、排序并过滤帖子：
 
-1. **In-Network (Thunder)**: Posts from accounts you follow
-2. **Out-of-Network (Phoenix Retrieval)**: Posts discovered from a global corpus
+1. **网络内（Thunder）**：来自你关注的账号的帖子
+2. **网络外（Phoenix Retrieval）**：从全量语料中通过机器学习召回发现的帖子
 
-Both sources are combined and ranked together using **Phoenix**, a Grok-based transformer model that predicts engagement probabilities for each post. The final score is a weighted combination of these predicted engagements.
+两类候选会合并后交由 **Phoenix** 统一排序。Phoenix 是一个基于 Grok 的 Transformer 模型，会为每条帖子预测多种互动行为的概率，最终分数则是这些概率的加权组合。
 
-We have eliminated every single hand-engineered feature and most heuristics from the system. The Grok-based transformer does all the heavy lifting by understanding your engagement history (what you liked, replied to, shared, etc.) and using that to determine what content is relevant to you.
+系统中我们移除了所有手工特征工程以及大部分启发式规则。基于 Grok 的 Transformer 会通过理解你的历史互动序列（点赞、回复、转发、分享等）来判断内容与你的相关性，从而承担主要的建模与排序工作。
 
 ---
 
-## System Architecture
+## 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                    FOR YOU FEED REQUEST                                     │
+│                                      为你信息流请求                                         │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
                                                │
                                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                         HOME MIXER                                          │
-│                                    (Orchestration Layer)                                    │
+│                                       （编排层）                                            │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                   QUERY HYDRATION                                   │   │
+│   │                                      查询补全                                      │   │
 │   │  ┌──────────────────────────┐    ┌──────────────────────────────────────────────┐   │   │
-│   │  │ User Action Sequence     │    │ User Features                                │   │   │
-│   │  │ (engagement history)     │    │ (following list, preferences, etc.)          │   │   │
+│   │  │ 用户行为序列             │    │ 用户特征                                     │   │   │
+│   │  │（互动历史）              │    │（关注列表、偏好等）                           │   │   │
 │   │  └──────────────────────────┘    └──────────────────────────────────────────────┘   │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                              │                                              │
 │                                              ▼                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                  CANDIDATE SOURCES                                  │   │
+│   │                                     候选来源                                      │   │
 │   │         ┌─────────────────────────────┐    ┌────────────────────────────────┐       │   │
 │   │         │        THUNDER              │    │     PHOENIX RETRIEVAL          │       │   │
-│   │         │    (In-Network Posts)       │    │   (Out-of-Network Posts)       │       │   │
+│   │         │     （网络内帖子）           │    │     （网络外帖子）              │       │   │
 │   │         │                             │    │                                │       │   │
-│   │         │  Posts from accounts        │    │  ML-based similarity search    │       │   │
-│   │         │  you follow                 │    │  across global corpus          │       │   │
+│   │         │  来自你关注账号的帖子        │    │  基于 ML 的相似度检索           │       │   │
+│   │         │                             │    │  覆盖全量语料                   │       │   │
 │   │         └─────────────────────────────┘    └────────────────────────────────┘       │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                              │                                              │
 │                                              ▼                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                      HYDRATION                                      │   │
-│   │  Fetch additional data: core post metadata, author info, media entities, etc.       │   │
+│   │                                       补全                                        │   │
+│   │  拉取额外数据：帖子核心元数据、作者信息、媒体实体等                                   │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                              │                                              │
 │                                              ▼                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                      FILTERING                                      │   │
-│   │  Remove: duplicates, old posts, self-posts, blocked authors, muted keywords, etc.   │   │
+│   │                                       过滤                                        │   │
+│   │  移除：重复内容、过旧内容、本人发帖、已拉黑作者、静音关键词等                          │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                              │                                              │
 │                                              ▼                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                       SCORING                                       │   │
+│   │                                       打分                                        │   │
 │   │  ┌──────────────────────────┐                                                       │   │
-│   │  │  Phoenix Scorer          │    Grok-based Transformer predicts:                   │   │
-│   │  │  (ML Predictions)        │    P(like), P(reply), P(repost), P(click)...          │   │
+│   │  │  Phoenix 打分器          │    基于 Grok 的 Transformer 预测：                    │   │
+│   │  │（ML 预测）                │    P(like), P(reply), P(repost), P(click)...          │   │
 │   │  └──────────────────────────┘                                                       │   │
 │   │               │                                                                     │   │
 │   │               ▼                                                                     │   │
 │   │  ┌──────────────────────────┐                                                       │   │
-│   │  │  Weighted Scorer         │    Weighted Score = Σ (weight × P(action))            │   │
-│   │  │  (Combine predictions)   │                                                       │   │
+│   │  │  加权打分器              │    加权分数 = Σ (weight × P(action))                  │   │
+│   │  │（组合预测）               │                                                       │   │
 │   │  └──────────────────────────┘                                                       │   │
 │   │               │                                                                     │   │
 │   │               ▼                                                                     │   │
 │   │  ┌──────────────────────────┐                                                       │   │
-│   │  │  Author Diversity        │    Attenuate repeated author scores                   │   │
-│   │  │  Scorer                  │    to ensure feed diversity                           │   │
+│   │  │  作者多样性打分器         │    衰减重复作者得分                                   │   │
+│   │  │                          │    以确保信息流多样性                                  │   │
 │   │  └──────────────────────────┘                                                       │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                              │                                              │
 │                                              ▼                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                      SELECTION                                      │   │
-│   │                    Sort by final score, select top K candidates                     │   │
+│   │                                       选择                                        │   │
+│   │                    按最终分数排序，选择 Top K 候选                                   │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                              │                                              │
 │                                              ▼                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                              FILTERING (Post-Selection)                             │   │
-│   │                 Visibility filtering (deleted/spam/violence/gore etc)               │   │
+│   │                                   过滤（选择后）                                   │   │
+│   │                 可见性过滤（删除/垃圾/暴力/血腥等）                                  │   │
 │   └─────────────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                             │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
                                                │
                                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     RANKED FEED RESPONSE                                    │
+│                                    排序后的信息流响应                                       │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Components
+## 组件
 
 ### Home Mixer
 
-**Location:** [`home-mixer/`](home-mixer/)
+**位置：** [`home-mixer/`](home-mixer/)
 
-The orchestration layer that assembles the For You feed. It leverages the `CandidatePipeline` framework with the following stages:
+用于组装「为你推荐」信息流的编排层。它基于 `CandidatePipeline` 框架，按如下阶段执行：
 
-| Stage | Description |
-|-------|-------------|
-| Query Hydrators | Fetch user context (engagement history, following list) |
-| Sources | Retrieve candidates from Thunder and Phoenix |
-| Hydrators | Enrich candidates with additional data |
-| Filters | Remove ineligible candidates |
-| Scorers | Predict engagement and compute final scores |
-| Selector | Sort by score and select top K |
-| Post-Selection Filters | Final visibility and dedup checks |
-| Side Effects | Cache request info for future use |
+| 阶段 | 说明 |
+|------|------|
+| 查询补全器（Query Hydrators） | 拉取用户上下文（互动历史、关注列表） |
+| 来源（Sources） | 从 Thunder 和 Phoenix 召回候选 |
+| 补全器（Hydrators） | 为候选补全更多数据 |
+| 过滤器（Filters） | 剔除不符合展示条件的候选 |
+| 打分器（Scorers） | 预测互动并计算最终分数 |
+| 选择器（Selector） | 按分数排序并选择 Top K |
+| 选择后过滤（Post-Selection Filters） | 最终可见性校验与去重 |
+| 副作用（Side Effects） | 缓存请求信息以便后续使用 |
 
-The server exposes a gRPC endpoint (`ScoredPostsService`) that returns ranked posts for a given user.
+服务对外提供 gRPC 接口（`ScoredPostsService`），用于按用户请求返回排序后的帖子列表。
 
 ---
 
 ### Thunder
 
-**Location:** [`thunder/`](thunder/)
+**位置：** [`thunder/`](thunder/)
 
-An in-memory post store and realtime ingestion pipeline that tracks recent posts from all users. It:
+一个以内存为主的帖子存储与实时写入链路，用于跟踪全体用户的近期发帖。它会：
 
-- Consumes post create/delete events from Kafka
-- Maintains per-user stores for original posts, replies/reposts, and video posts
-- Serves "in-network" post candidates from accounts the requesting user follows
-- Automatically trims posts older than the retention period
+- 从 Kafka 消费帖子创建/删除事件
+- 为每个用户维护原帖、回复/转帖、视频帖等存储
+- 为请求用户提供其关注网络内的帖子候选
+- 自动裁剪超过保留期的历史帖子
 
-Thunder enables sub-millisecond lookups for in-network content without hitting an external database.
+Thunder 让网络内内容可以在亚毫秒级完成检索，无需访问外部数据库。
 
 ---
 
 ### Phoenix
 
-**Location:** [`phoenix/`](phoenix/)
+**位置：** [`phoenix/`](phoenix/)
 
-The ML component with two main functions:
+机器学习组件，主要包含两项能力：
 
-#### 1. Retrieval (Two-Tower Model)
-Finds relevant out-of-network posts:
-- **User Tower**: Encodes user features and engagement history into an embedding
-- **Candidate Tower**: Encodes all posts into embeddings
-- **Similarity Search**: Retrieves top-K posts via dot product similarity
+#### 1. 召回（双塔模型）
+用于发现网络外的相关帖子：
+- **用户塔（User Tower）**：将用户特征与互动历史编码为向量
+- **候选塔（Candidate Tower）**：将全量帖子编码为向量
+- **相似度检索**：通过点积相似度检索 Top-K 帖子
 
-#### 2. Ranking (Transformer with Candidate Isolation)
-Predicts engagement probabilities for each candidate:
-- Takes user context (engagement history) and candidate posts as input
-- Uses special attention masking so candidates cannot attend to each other
-- Outputs probabilities for each action type (like, reply, repost, click, etc.)
+#### 2. 排序（带候选隔离的 Transformer）
+为每个候选预测互动行为概率：
+- 输入包含用户上下文（互动历史）与候选帖子
+- 通过特殊注意力掩码（attention mask）让候选之间不能相互关注
+- 输出多种行为类型的概率（点赞、回复、转帖、点击等）
 
-See [`phoenix/README.md`](phoenix/README.md) for detailed architecture documentation.
+更详细的架构说明见 [phoenix/README.md](phoenix/README.md)。
 
 ---
 
 ### Candidate Pipeline
 
-**Location:** [`candidate-pipeline/`](candidate-pipeline/)
+**位置：** [`candidate-pipeline/`](candidate-pipeline/)
 
-A reusable framework for building recommendation pipelines. Defines traits for:
+用于构建推荐流水线的可复用框架，为以下 trait（接口）定义了标准接口：
 
-| Trait | Purpose |
-|-------|---------|
-| `Source` | Fetch candidates from a data source |
-| `Hydrator` | Enrich candidates with additional features |
-| `Filter` | Remove candidates that shouldn't be shown |
-| `Scorer` | Compute scores for ranking |
-| `Selector` | Sort and select top candidates |
-| `SideEffect` | Run async side effects (caching, logging) |
+| Trait（接口） | 用途 |
+|-------|------|
+| `Source` | 从数据源获取候选 |
+| `Hydrator` | 为候选补充更多特征/字段 |
+| `Filter` | 剔除不应展示的候选 |
+| `Scorer` | 计算用于排序的分数 |
+| `Selector` | 排序并选择 Top 候选 |
+| `SideEffect` | 执行异步副作用（缓存、日志等） |
 
-The framework runs sources and hydrators in parallel where possible, with configurable error handling and logging.
-
----
-
-## How It Works
-
-### Pipeline Stages
-
-1. **Query Hydration**: Fetch the user's recent engagements history and metadata (eg. following list)
-
-2. **Candidate Sourcing**: Retrieve candidates from:
-   - **Thunder**: Recent posts from followed accounts (in-network)
-   - **Phoenix Retrieval**: ML-discovered posts from the global corpus (out-of-network)
-
-3. **Candidate Hydration**: Enrich candidates with:
-   - Core post data (text, media, etc.)
-   - Author information (username, verification status)
-   - Video duration (for video posts)
-   - Subscription status
-
-4. **Pre-Scoring Filters**: Remove posts that are:
-   - Duplicates
-   - Too old
-   - From the viewer themselves
-   - From blocked/muted accounts
-   - Containing muted keywords
-   - Previously seen or recently served
-   - Ineligible subscription content
-
-5. **Scoring**: Apply multiple scorers sequentially:
-   - **Phoenix Scorer**: Get ML predictions from the Phoenix transformer model
-   - **Weighted Scorer**: Combine predictions into a final relevance score
-   - **Author Diversity Scorer**: Attenuate repeated author scores for diversity
-   - **OON Scorer**: Adjust scores for out-of-network content
-
-6. **Selection**: Sort by score and select the top K candidates
-
-7. **Post-Selection Processing**: Final validation of post candidates to be served
+框架会在可行时并行执行 sources 与 hydrators，并提供可配置的错误处理与日志能力。
 
 ---
 
-### Scoring and Ranking
+## 工作原理
 
-The Phoenix Grok-based transformer model predicts probabilities for multiple engagement types:
+### 流水线阶段
+
+1. **查询补全（Query Hydration）**：获取用户近期互动历史与元信息（如关注列表）
+
+2. **候选召回（Candidate Sourcing）**：从以下来源召回候选：
+   - **Thunder**：关注网络内的近期帖子
+   - **Phoenix Retrieval**：从全量语料中机器学习召回的网络外帖子
+
+3. **候选补全（Candidate Hydration）**：为候选补全信息，例如：
+   - 帖子核心数据（文本、媒体等）
+   - 作者信息（用户名、认证状态）
+   - 视频时长（仅视频帖）
+   - 订阅状态
+
+4. **打分前过滤（Pre-Scoring Filters）**：剔除以下帖子：
+   - 重复内容
+   - 过旧内容
+   - 观看者本人发帖
+   - 来自已拉黑/已静音账号的内容
+   - 命中静音关键词的内容
+   - 已经看过或近期已分发过的内容
+   - 不符合订阅条件的内容
+
+5. **打分（Scoring）**：按顺序应用多个打分器：
+   - **Phoenix Scorer**：从 Phoenix Transformer 获取机器学习预测
+   - **Weighted Scorer**：将预测组合为最终相关性分数
+   - **Author Diversity Scorer**：衰减重复作者的分数以提升多样性
+   - **OON Scorer**：对网络外内容进行分数修正
+
+6. **选择（Selection）**：按分数排序并选择 Top K 候选
+
+7. **选择后处理（Post-Selection Processing）**：对最终待分发候选执行校验与收尾处理
+
+---
+
+### 打分与排序
+
+Phoenix 的 Grok-based Transformer 模型会为多种互动行为预测概率：
 
 ```
-Predictions:
+预测：
 ├── P(favorite)
 ├── P(reply)
 ├── P(repost)
@@ -262,64 +262,64 @@ Predictions:
 └── P(report)
 ```
 
-The **Weighted Scorer** combines these into a final score:
+**Weighted Scorer** 会将这些概率组合成最终分数：
 
 ```
-Final Score = Σ (weight_i × P(action_i))
+最终分数 = Σ (weight_i × P(action_i))
 ```
 
-Positive actions (like, repost, share) have positive weights. Negative actions (block, mute, report) have negative weights, pushing down content the user would likely dislike.
+正向行为（点赞、转帖、分享等）对应正权重；负向行为（拉黑、静音、举报等）对应负权重，从而降低用户可能不喜欢的内容得分。
 
 ---
 
-### Filtering
+### 过滤
 
-Filters run at two stages:
+过滤发生在两个阶段：
 
-**Pre-Scoring Filters:**
-| Filter | Purpose |
-|--------|---------|
-| `DropDuplicatesFilter` | Remove duplicate post IDs |
-| `CoreDataHydrationFilter` | Remove posts that failed to hydrate core metadata |
-| `AgeFilter` | Remove posts older than threshold |
-| `SelfpostFilter` | Remove user's own posts |
-| `RepostDeduplicationFilter` | Dedupe reposts of same content |
-| `IneligibleSubscriptionFilter` | Remove paywalled content user can't access |
-| `PreviouslySeenPostsFilter` | Remove posts user has already seen |
-| `PreviouslyServedPostsFilter` | Remove posts already served in session |
-| `MutedKeywordFilter` | Remove posts with user's muted keywords |
-| `AuthorSocialgraphFilter` | Remove posts from blocked/muted authors |
+**打分前过滤（Pre-Scoring Filters）：**
+| 过滤器 | 用途 |
+|--------|------|
+| `DropDuplicatesFilter` | 移除重复的帖子 ID |
+| `CoreDataHydrationFilter` | 移除未能补全核心元数据的帖子 |
+| `AgeFilter` | 移除超过阈值的老帖子 |
+| `SelfpostFilter` | 移除用户本人发帖 |
+| `RepostDeduplicationFilter` | 对同一内容的转帖去重 |
+| `IneligibleSubscriptionFilter` | 移除用户无法访问的付费内容 |
+| `PreviouslySeenPostsFilter` | 移除用户已看过的帖子 |
+| `PreviouslyServedPostsFilter` | 移除会话内已下发过的帖子 |
+| `MutedKeywordFilter` | 移除命中用户静音关键词的帖子 |
+| `AuthorSocialgraphFilter` | 移除来自已拉黑/已静音作者的帖子 |
 
-**Post-Selection Filters:**
-| Filter | Purpose |
-|--------|---------|
-| `VFFilter` | Remove posts that are deleted/spam/violence/gore etc. |
-| `DedupConversationFilter` | Deduplicate multiple branches of the same conversation thread |
-
----
-
-## Key Design Decisions
-
-### 1. No Hand-Engineered Features
-The system relies entirely on the Grok-based transformer to learn relevance from user engagement sequences. No manual feature engineering for content relevance. This significantly reduces the complexity in our data pipelines and serving infrastructure.
-
-### 2. Candidate Isolation in Ranking
-During transformer inference, candidates cannot attend to each other—only to the user context. This ensures the score for a post doesn't depend on which other posts are in the batch, making scores consistent and cacheable.
-
-### 3. Hash-Based Embeddings
-Both retrieval and ranking use multiple hash functions for embedding lookup
-
-### 4. Multi-Action Prediction
-Rather than predicting a single "relevance" score, the model predicts probabilities for many actions.
-
-### 5. Composable Pipeline Architecture
-The `candidate-pipeline` crate provides a flexible framework for building recommendation pipelines with:
-- Separation of pipeline execution and monitoring from business logic
-- Parallel execution of independent stages and graceful error handling
-- Easy addition of new sources, hydrations, filters, and scorers
+**选择后过滤（Post-Selection Filters）：**
+| 过滤器 | 用途 |
+|--------|------|
+| `VFFilter` | 移除已删除/垃圾/暴力/血腥等不可见帖子 |
+| `DedupConversationFilter` | 对同一对话线程的多分支去重 |
 
 ---
 
-## License
+## 关键设计决策
 
-This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+### 1. 不做手工特征工程
+系统完全依赖基于 Grok 的 Transformer 从用户互动序列中学习相关性，不再针对内容相关性做人工特征工程，从而显著降低数据流水线与在线服务基础设施的复杂度。
+
+### 2. 排序阶段的候选隔离
+Transformer 推理时，候选之间不能相互 attention，只能关注用户上下文。这保证某条帖子的得分不依赖同一 batch 中其他候选的存在，从而让分数更稳定，也更易于缓存。
+
+### 3. 基于哈希的 Embedding
+召回与排序都通过多个哈希函数进行 embedding 查表。
+
+### 4. 多行为预测
+模型不会只预测单一的「相关性」分数，而是预测多种行为的概率。
+
+### 5. 可组合的流水线架构
+`candidate-pipeline` crate 提供了灵活的推荐流水线框架，具备：
+- 将流水线执行与监控从业务逻辑中解耦
+- 独立阶段并行执行，并支持优雅的错误处理
+- 便捷扩展新的 source、hydrator、filter 与 scorer
+
+---
+
+## 许可证
+
+本项目采用 Apache License 2.0 许可证，详见 [LICENSE](LICENSE)。
